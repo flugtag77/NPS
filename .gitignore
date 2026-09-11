@@ -1,0 +1,19 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+
+# Private source data and locally generated artifacts.
+nps_pipeline/db/responses_long.csv
+nps_pipeline/db/open_answers_2026.jsonl
+nps_pipeline/db/open_answers_labeled.jsonl
+nps_pipeline/db/state.json
+nps_pipeline/build/
+
+# Published dashboards embed aggregated survey data and a client-side access gate.
+nps_pipeline/_snapshots/
+nps_pipeline/site/index.html
+nps_pipeline/site/data.json
+nps_pipeline/site_template.html
+nps-2026-pipeline.zip
