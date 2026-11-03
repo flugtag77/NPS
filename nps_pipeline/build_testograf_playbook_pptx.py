@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Сборка PPTX-playbook по клиентским опросам Testograf.
+"""Обучающая PPTX по Testograf для клиентских опросов.
 
-Стиль: палитра из make_mockup_pdf.py (ПИК-Комфорт).
-В рабочих текстах не используется буква "е" с точками (е вместо ё).
+Не шпаргалка-обрывки, а объяснения: что это, зачем, пример, когда включать.
+В рабочих текстах не используется буква с точками над е.
 """
 from __future__ import annotations
 
@@ -11,11 +11,10 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
-from pptx.util import Emu, Inches, Pt
+from pptx.util import Inches, Pt
 
-# --- Brand ---
 ORANGE = RGBColor(0xFC, 0x4C, 0x02)
 VIOLET = RGBColor(0x96, 0x78, 0xD2)
 VIOLET_DARK = RGBColor(0x7C, 0x5E, 0xB8)
@@ -29,654 +28,660 @@ RED = RGBColor(0xE2, 0x4C, 0x4B)
 
 SLIDE_W = Inches(13.333)
 SLIDE_H = Inches(7.5)
-MARGIN = Inches(0.45)
-
+M = Inches(0.45)
 OUT = Path(__file__).resolve().parent / "build" / "Testograf_playbook_client_surveys.pptx"
 
 
-def _set_run(run, *, size=14, bold=False, color=INK, font="Arial"):
+def _font(run, size=14, bold=False, color=INK):
     run.font.size = Pt(size)
     run.font.bold = bold
     run.font.color.rgb = color
-    run.font.name = font
-    # East Asian / complex script fallback
+    run.font.name = "Arial"
     rPr = run._r.get_or_add_rPr()
     for tag in ("latin", "ea", "cs"):
         el = rPr.find(qn(f"a:{tag}"))
         if el is None:
             el = rPr.makeelement(qn(f"a:{tag}"), {})
             rPr.append(el)
-        el.set("typeface", font)
+        el.set("typeface", "Arial")
 
 
-def _add_text(tf, text, *, size=14, bold=False, color=INK, align=PP_ALIGN.LEFT, space_after=6):
-    p = tf.paragraphs[0] if not tf.paragraphs[0].text else tf.add_paragraph()
-    if not tf.paragraphs[0].text and tf.paragraphs[0] is p:
-        pass
-    else:
-        if tf.paragraphs[0].text == "" and len(tf.paragraphs) == 1:
-            p = tf.paragraphs[0]
-        elif tf.paragraphs[0].text and p is tf.paragraphs[0]:
-            p = tf.add_paragraph()
-    p.clear() if hasattr(p, "clear") else None
-    # Safer: always use first empty or new
-    return p
-
-
-def write_paragraph(tf, text, *, size=14, bold=False, color=INK, align=PP_ALIGN.LEFT, space_after=Pt(4), level=0):
-    if tf.paragraphs[0].text == "" and len(tf.paragraphs) == 1:
-        p = tf.paragraphs[0]
-    else:
-        p = tf.add_paragraph()
+def P(tf, text, *, size=14, bold=False, color=INK, align=PP_ALIGN.LEFT, after=6):
+    p = tf.paragraphs[0] if tf.paragraphs[0].text == "" else tf.add_paragraph()
     p.text = text
     p.alignment = align
-    p.level = level
-    p.space_after = space_after
-    for run in p.runs:
-        _set_run(run, size=size, bold=bold, color=color)
-    return p
+    p.space_after = Pt(after)
+    for r in p.runs:
+        _font(r, size=size, bold=bold, color=color)
 
 
-def add_shape(slide, left, top, width, height, fill=None, line=None):
-    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
-    shape.line.fill.background()
-    if fill is not None:
-        shape.fill.solid()
-        shape.fill.fore_color.rgb = fill
-    else:
-        shape.fill.background()
-    if line is not None:
-        shape.line.color.rgb = line
-    return shape
+def rect(slide, l, t, w, h, fill):
+    sh = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, l, t, w, h)
+    sh.fill.solid()
+    sh.fill.fore_color.rgb = fill
+    sh.line.fill.background()
+    return sh
 
 
-def add_round(slide, left, top, width, height, fill):
-    shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
-    shape.adjustments[0] = 0.08
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = fill
-    shape.line.fill.background()
-    return shape
+def round_rect(slide, l, t, w, h, fill):
+    sh = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, l, t, w, h)
+    sh.adjustments[0] = 0.06
+    sh.fill.solid()
+    sh.fill.fore_color.rgb = fill
+    sh.line.fill.background()
+    return sh
 
 
-def textbox(slide, left, top, width, height):
-    return slide.shapes.add_textbox(left, top, width, height)
+def tb(slide, l, t, w, h):
+    return slide.shapes.add_textbox(l, t, w, h)
 
 
-def header_bar(slide, title, subtitle=""):
-    add_shape(slide, 0, 0, SLIDE_W, Inches(0.08), fill=ORANGE)
-    add_shape(slide, 0, Inches(0.08), SLIDE_W, Inches(0.72), fill=BG)
-    box = textbox(slide, MARGIN, Inches(0.18), Inches(3.2), Inches(0.5))
-    tf = box.text_frame
+def blank(prs):
+    return prs.slides.add_slide(prs.slide_layouts[6])
+
+
+def header(slide, title, subtitle=""):
+    rect(slide, 0, 0, SLIDE_W, Inches(0.07), ORANGE)
+    rect(slide, 0, Inches(0.07), SLIDE_W, Inches(0.78), BG)
+    b = tb(slide, M, Inches(0.18), Inches(2.8), Inches(0.5))
+    P(b.text_frame, "ПИК Комфорт", size=15, bold=True, color=ORANGE, after=0)
+    b = tb(slide, Inches(3.4), Inches(0.14), Inches(9.4), Inches(0.6))
+    tf = b.text_frame
     tf.word_wrap = True
-    write_paragraph(tf, "ПИК Комфорт", size=16, bold=True, color=ORANGE)
-    tbox = textbox(slide, Inches(3.6), Inches(0.16), Inches(9.2), Inches(0.55))
-    tf = tbox.text_frame
-    tf.word_wrap = True
-    write_paragraph(tf, title, size=18, bold=True, color=INK, space_after=Pt(0))
+    P(tf, title, size=18, bold=True, color=INK, after=1)
     if subtitle:
-        write_paragraph(tf, subtitle, size=11, color=GRAY, space_after=Pt(0))
+        P(tf, subtitle, size=12, color=GRAY, after=0)
 
 
-def footer(slide, page_no, total):
-    box = textbox(slide, MARGIN, Inches(7.1), Inches(10), Inches(0.3))
-    tf = box.text_frame
-    write_paragraph(tf, "Testograf PRO+ · Playbook клиентских опросов", size=10, color=GRAY_LIGHT)
-    nbox = textbox(slide, Inches(11.5), Inches(7.1), Inches(1.3), Inches(0.3))
-    tf = nbox.text_frame
-    write_paragraph(tf, f"{page_no} / {total}", size=10, color=GRAY_LIGHT, align=PP_ALIGN.RIGHT)
+def footer(slide, n, total):
+    b = tb(slide, M, Inches(7.15), Inches(10), Inches(0.28))
+    P(b.text_frame, "Обучение Testograf · клиентские опросы", size=10, color=GRAY_LIGHT, after=0)
+    b = tb(slide, Inches(11.4), Inches(7.15), Inches(1.4), Inches(0.28))
+    P(b.text_frame, f"{n}/{total}", size=10, color=GRAY_LIGHT, align=PP_ALIGN.RIGHT, after=0)
 
 
-def new_slide(prs):
-    blank = prs.slide_layouts[6]
-    return prs.slides.add_slide(blank)
-
-
-def card(slide, left, top, width, height, title, lines, accent=VIOLET):
-    add_round(slide, left, top, width, height, WHITE)
-    # left accent
-    add_shape(slide, left, top, Inches(0.08), height, fill=accent)
-    box = textbox(slide, left + Inches(0.2), top + Inches(0.12), width - Inches(0.3), height - Inches(0.2))
+def body_box(slide, l, t, w, h, lines, size=13):
+    box = tb(slide, l, t, w, h)
     tf = box.text_frame
     tf.word_wrap = True
-    write_paragraph(tf, title, size=13, bold=True, color=INK, space_after=Pt(6))
+    for i, item in enumerate(lines):
+        if isinstance(item, tuple):
+            text, kwargs = item
+            P(tf, text, **kwargs)
+        else:
+            P(tf, item, size=size, color=INK, after=8)
+    return box
+
+
+def panel(slide, l, t, w, h, title, lines, accent=VIOLET):
+    round_rect(slide, l, t, w, h, WHITE)
+    rect(slide, l, t, Inches(0.09), h, accent)
+    box = tb(slide, l + Inches(0.22), t + Inches(0.14), w - Inches(0.35), h - Inches(0.25))
+    tf = box.text_frame
+    tf.word_wrap = True
+    P(tf, title, size=14, bold=True, color=INK, after=8)
     for line in lines:
-        write_paragraph(tf, line, size=11, color=GRAY, space_after=Pt(3))
+        P(tf, line, size=12, color=GRAY, after=5)
 
 
 def build():
     prs = Presentation()
     prs.slide_width = SLIDE_W
     prs.slide_height = SLIDE_H
-    slides_meta = []  # filled as we go; footer applied in second pass via list of (slide, idx)
+    slides = []
 
-    built = []
+    def add():
+        s = blank(prs)
+        slides.append(s)
+        return s
 
-    def finish(slide, title, subtitle=""):
-        built.append((slide, title, subtitle))
-
-    # --- 1 Title ---
-    s = new_slide(prs)
-    add_shape(s, 0, 0, SLIDE_W, SLIDE_H, fill=BG)
-    add_shape(s, 0, 0, SLIDE_W, Inches(0.12), fill=ORANGE)
-    add_shape(s, 0, Inches(6.9), SLIDE_W, Inches(0.6), fill=VIOLET_DARK)
-    box = textbox(s, MARGIN, Inches(2.0), Inches(12), Inches(3))
-    tf = box.text_frame
+    # 1 Title
+    s = add()
+    rect(s, 0, 0, SLIDE_W, SLIDE_H, BG)
+    rect(s, 0, 0, SLIDE_W, Inches(0.1), ORANGE)
+    rect(s, 0, Inches(6.85), SLIDE_W, Inches(0.65), VIOLET_DARK)
+    b = tb(s, M, Inches(1.8), Inches(12), Inches(4))
+    tf = b.text_frame
     tf.word_wrap = True
-    write_paragraph(tf, "ПИК Комфорт", size=18, bold=True, color=ORANGE)
-    write_paragraph(tf, "Playbook Testograf", size=36, bold=True, color=INK, space_after=Pt(10))
-    write_paragraph(
+    P(tf, "ПИК Комфорт · Департамент маркетинга", size=14, bold=True, color=ORANGE, after=10)
+    P(tf, "Как работать в Testograf", size=34, bold=True, color=INK, after=12)
+    P(
         tf,
-        "Клиентские опросы: NPS · CSI · CSAT · голосования · послесервис",
+        "Обучающая презентация: что умеет сервис, какие бывают вопросы,\n"
+        "что такое логика и «блуждающие» ответы, и как мы запускаем опросы.",
         size=16,
         color=GRAY,
-        space_after=Pt(14),
+        after=16,
     )
-    write_paragraph(
-        tf,
-        "Процесс запуска · настройки сервиса · контроль качества ответов",
-        size=14,
-        color=VIOLET_DARK,
-    )
-    f = textbox(s, MARGIN, Inches(7.05), Inches(12), Inches(0.35))
-    write_paragraph(f.text_frame, "Тариф PRO+ · Согласование запуска: Голубева Екатерина Анатольевна · 2026", size=12, color=WHITE)
-    finish(s, "title")
+    P(tf, "Для NPS, CSI, CSAT, голосований и послесервисных опросов · тариф PRO+", size=13, color=VIOLET_DARK)
+    b = tb(s, M, Inches(7.0), Inches(12), Inches(0.35))
+    P(b.text_frame, "Согласование запуска: Голубева Екатерина Анатольевна", size=12, color=WHITE, after=0)
 
-    # --- 2 Agenda ---
-    s = new_slide(prs)
-    header_bar(s, "Содержание", "Операционный playbook")
-    items = [
-        "01  Как мы работаем с опросами (шаги 1–9)",
-        "02  Типы опросов и риски качества",
-        "03  Ключевые настройки Testograf: вкл / выкл",
-        "04  Матрица: тип опроса × настройка",
-        "05  Постобработка и «блуждающие» ответы",
-        "06  Чеклисты и типичные ошибки",
-    ]
-    box = textbox(s, MARGIN, Inches(1.2), Inches(12), Inches(5.5))
-    tf = box.text_frame
-    tf.word_wrap = True
-    for it in items:
-        write_paragraph(tf, it, size=20, color=INK, space_after=Pt(14))
-    finish(s, "Содержание")
-
-    # --- 3 Process 1-5 ---
-    s = new_slide(prs)
-    header_bar(s, "Как мы работаем с опросами", "Шаги 1–5 · до согласования заказчиком")
-    steps = [
-        ("1", "Бриф", "Заказчик приносит бриф. Если заказчик — мы, бриф готовим сами."),
-        ("2", "Заводим опрос", "Создание → Логика → Настройка → Дизайн в Testograf."),
-        ("3", "Снимаем ограничение повторов", "Выключаем «нельзя пройти дважды» — иначе нельзя тестировать."),
-        ("4", "Внутренняя проверка", "Логика, ошибки, тексты, мобильный вид."),
-        ("5", "Проверка заказчиком", "Фиксируем список правок."),
-    ]
-    y = Inches(1.15)
-    for num, title, body in steps:
-        add_round(s, MARGIN, y, Inches(12.4), Inches(0.95), WHITE)
-        badge = add_round(s, MARGIN + Inches(0.15), y + Inches(0.2), Inches(0.55), Inches(0.55), ORANGE)
-        bt = textbox(s, MARGIN + Inches(0.15), y + Inches(0.28), Inches(0.55), Inches(0.45))
-        write_paragraph(bt.text_frame, num, size=16, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
-        t = textbox(s, MARGIN + Inches(0.9), y + Inches(0.15), Inches(11), Inches(0.7))
-        tf = t.text_frame
-        tf.word_wrap = True
-        write_paragraph(tf, title, size=14, bold=True, color=INK, space_after=Pt(2))
-        write_paragraph(tf, body, size=12, color=GRAY, space_after=Pt(0))
-        y += Inches(1.05)
-    finish(s, "Процесс 1–5")
-
-    # --- 4 Process 6-9 ---
-    s = new_slide(prs)
-    header_bar(s, "Как мы работаем с опросами", "Шаги 6–9 · согласование и запуск")
-    steps = [
-        ("6", "Коммуникация", "Параллельно готовим текст push / ТГ / email / ЛК."),
-        ("7", "Согласование", "Опрос и коммуникацию утверждает Голубева Екатерина Анатольевна. Без этого — запуск запрещен."),
-        ("8", "Зачистка + защита", "Удаляем тестовые ответы. Включаем ограничение повторного прохождения."),
-        ("9", "Запуск", "Период проведения, каналы, фиксация даты старта."),
-    ]
-    y = Inches(1.15)
-    for num, title, body in steps:
-        accent = VIOLET if num != "7" else ORANGE
-        add_round(s, MARGIN, y, Inches(12.4), Inches(1.05), WHITE)
-        add_round(s, MARGIN + Inches(0.15), y + Inches(0.25), Inches(0.55), Inches(0.55), accent)
-        bt = textbox(s, MARGIN + Inches(0.15), y + Inches(0.33), Inches(0.55), Inches(0.45))
-        write_paragraph(bt.text_frame, num, size=16, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
-        t = textbox(s, MARGIN + Inches(0.9), y + Inches(0.18), Inches(11), Inches(0.75))
-        tf = t.text_frame
-        tf.word_wrap = True
-        write_paragraph(tf, title, size=14, bold=True, color=INK, space_after=Pt(2))
-        write_paragraph(tf, body, size=12, color=GRAY, space_after=Pt(0))
-        y += Inches(1.15)
-
-    note = textbox(s, MARGIN, Inches(5.9), Inches(12.4), Inches(0.9))
-    tf = note.text_frame
-    tf.word_wrap = True
-    write_paragraph(tf, "Правило про повторы", size=13, bold=True, color=ORANGE, space_after=Pt(4))
-    write_paragraph(
-        tf,
-        "Шаги 3–7: ограничение ВЫКЛ. Шаг 8 перед запуском: ограничение ВКЛ. "
-        "После бага: выкл → фикс → зачистка тестов → снова вкл → продолжить сбор.",
-        size=12,
-        color=GRAY,
-    )
-    finish(s, "Процесс 6–9")
-
-    # --- 5 Types ---
-    s = new_slide(prs)
-    header_bar(s, "Типы опросов и риски", "Что защищаем в первую очередь")
-    rows = [
-        ("NPS", "Лояльность 0–10", "Повторы, незавершенные, случайные клики, малые n", "1 чел = 1 ответ; только завершенные"),
-        ("CSI", "Удовлетворенность по факторам", "Straight-line по матрицам", "Обязательные шкалы; скринер ЦА"),
-        ("CSAT", "Оценка касания", "Дубли по повторным касаниям", "Перс. ссылка / ID сделки"),
-        ("Голосование", "Выбор варианта", "Накрутки, боты", "SMS / одноразовые ссылки; без лидерборда"),
-        ("Послесервис", "Обратная связь по обращению", "Не та ЦА, повтор одной заявки", "ID обращения; дисквал «не обращался»"),
-    ]
-    # table header
-    headers = ["Тип", "Цель", "Риски", "Защита"]
-    col_w = [Inches(1.8), Inches(3.0), Inches(3.8), Inches(3.6)]
-    x0 = MARGIN
-    y0 = Inches(1.15)
-    # header row
-    x = x0
-    for i, h in enumerate(headers):
-        add_shape(s, x, y0, col_w[i], Inches(0.42), fill=VIOLET_DARK)
-        tb = textbox(s, x + Inches(0.08), y0 + Inches(0.08), col_w[i] - Inches(0.1), Inches(0.3))
-        write_paragraph(tb.text_frame, h, size=11, bold=True, color=WHITE)
-        x += col_w[i]
-    y = y0 + Inches(0.42)
-    for ri, row in enumerate(rows):
-        fill = WHITE if ri % 2 == 0 else BG
-        x = x0
-        for i, cell in enumerate(row):
-            add_shape(s, x, y, col_w[i], Inches(0.95), fill=fill)
-            tb = textbox(s, x + Inches(0.08), y + Inches(0.12), col_w[i] - Inches(0.12), Inches(0.75))
-            tf = tb.text_frame
-            tf.word_wrap = True
-            write_paragraph(tf, cell, size=11, bold=(i == 0), color=INK if i == 0 else GRAY)
-            x += col_w[i]
-        y += Inches(0.95)
-    finish(s, "Типы опросов")
-
-    # --- 6 Repeats ---
-    s = new_slide(prs)
-    header_bar(s, "Ограничение повторного прохождения", "Устройство / cookies · IP · персональные ссылки")
-    card(
+    # 2 Goals of deck
+    s = add()
+    header(s, "Зачем эта презентация", "После нее должно быть понятно без догадок")
+    panel(
         s,
-        MARGIN,
-        Inches(1.15),
-        Inches(4.0),
-        Inches(5.4),
-        "Устройство / cookies",
+        M,
+        Inches(1.2),
+        Inches(12.4),
+        Inches(5.5),
+        "Вы сможете ответить на вопросы:",
         [
-            "Где: Настройка → Основное → Вход",
-            "Зачем: 1 человек ≈ 1 ответ",
-            "Вкл: шаг 8 перед запуском",
-            "Выкл: шаги 3–7 (тест)",
-            "Риск: обход через инкогнито / другое устройство",
-            "Наш default для NPS/CSI/CSAT",
+            "1. Что такое Testograf и из каких частей состоит опрос.",
+            "2. Чем «выбор одного» отличается от «выбора нескольких» и зачем матрицы.",
+            "3. Что такое обычная логика и чем продвинутая логика от нее отличается.",
+            "4. Что люди имеют в виду под «блуждающими ответами» — и как с этим работать.",
+            "5. Как у нас устроен процесс от брифа до запуска (9 шагов).",
+            "6. Какие настройки включать на тесте, а какие — только перед боевым стартом.",
         ],
         accent=ORANGE,
     )
-    card(
-        s,
-        Inches(4.65),
-        Inches(1.15),
-        Inches(4.0),
-        Inches(5.4),
-        "Ограничение по IP",
-        [
-            "Где: Настройка → Основное → Вход",
-            "Зачем: умеренная защита от накруток",
-            "Вкл: открытые голосования без перс. ссылок",
-            "Выкл: жители ЖК, общий Wi‑Fi / NAT",
-            "Риск: один IP = много честных людей",
-            "Для NPS ЖК — обычно ВЫКЛ",
-        ],
-        accent=VIOLET,
-    )
-    card(
-        s,
-        Inches(8.85),
-        Inches(1.15),
-        Inches(4.0),
-        Inches(5.4),
-        "Персональные ссылки",
-        [
-            "Где: параметры ссылки / рассылка",
-            "Зачем: максимальный контроль участника",
-            "Вкл: CSAT, послесервис с ID",
-            "Выкл: широкая открытая ссылка в ТГ/QR",
-            "Риск: пересылка ссылки другому",
-            "PRO+: до 50 параметров ссылки",
-        ],
-        accent=GREEN,
-    )
-    finish(s, "Повторы")
 
-    # --- 7 Incomplete + random ---
-    s = new_slide(prs)
-    header_bar(s, "Незавершенные и рандомизация", "«Блуждающие» ответы — два разных смысла")
-    card(
+    # 3 What is Testograf
+    s = add()
+    header(s, "Что такое Testograf", "Коротко о сервисе")
+    body_box(
         s,
-        MARGIN,
+        M,
+        Inches(1.15),
+        Inches(12.4),
+        Inches(5.8),
+        [
+            ("Testograf — российский онлайн-конструктор опросов, анкет, тестов и голосований.", {"size": 15, "bold": True, "color": INK, "after": 12}),
+            ("Мы используем его, чтобы собирать мнение жителей и клиентов: NPS, удовлетворенность (CSI/CSAT), голосования и опросы после обращения в сервис.", {"size": 14, "color": GRAY, "after": 12}),
+            ("Опрос в Testograf — это не «одна ссылка». Это:", {"size": 14, "bold": True, "color": INK, "after": 8}),
+            ("• структура вопросов (типы, тексты, обязательность);", {"size": 14, "color": GRAY, "after": 6}),
+            ("• логика (кому какой следующий вопрос показать);", {"size": 14, "color": GRAY, "after": 6}),
+            ("• настройки доступа и защиты (повторы, пароли, SMS);", {"size": 14, "color": GRAY, "after": 6}),
+            ("• дизайн и каналы раздачи (ссылка, email, SMS, виджет, QR);", {"size": 14, "color": GRAY, "after": 6}),
+            ("• результаты и выгрузки (таблицы, фильтры, API на тарифе PRO+).", {"size": 14, "color": GRAY, "after": 6}),
+        ],
+    )
+
+    # 4 Constructor steps
+    s = add()
+    header(s, "Как устроен конструктор", "Четыре вкладки — запомните порядок")
+    steps = [
+        ("1. Создание", "Страницы и вопросы. Здесь выбираете тип вопроса, тексты, обязательность, случайный порядок вариантов."),
+        ("2. Логика", "Ветвление: куда идти после ответа. Дисквалификация, пропуск блоков, разные финалы."),
+        ("3. Настройка", "Доступ, повторы, незавершенные, таймер, SMS, период проведения, страница завершения."),
+        ("4. Дизайн", "Логотип, цвета, шрифты, фон — под бренд."),
+    ]
+    y = Inches(1.15)
+    for title, text in steps:
+        round_rect(s, M, y, Inches(12.4), Inches(1.2), WHITE)
+        rect(s, M, y, Inches(0.1), Inches(1.2), ORANGE)
+        b = tb(s, M + Inches(0.3), y + Inches(0.2), Inches(11.8), Inches(0.9))
+        tf = b.text_frame
+        tf.word_wrap = True
+        P(tf, title, size=16, bold=True, color=INK, after=4)
+        P(tf, text, size=13, color=GRAY, after=0)
+        y += Inches(1.35)
+
+    # 5 Question types map
+    s = add()
+    header(s, "Какие типы вопросов бывают", "Группы, которыми удобно думать")
+    cols = [
+        (
+            "Выбор из списка",
+            [
+                "Выбор одного",
+                "Выбор нескольких",
+                "Выпадающий список",
+                "Картинки (одно/несколько)",
+                "Зачем: простые факты и предпочтения",
+            ],
+        ),
+        (
+            "Шкалы и индексы",
+            [
+                "NPS (0–10)",
+                "CSI / Лайкерт",
+                "Звезды / смайлы",
+                "Семантический дифференциал",
+                "Зачем: измерить оценку числом",
+            ],
+        ),
+        (
+            "Матрицы",
+            [
+                "Один ответ в строке",
+                "Несколько в строке",
+                "Звезды / текст / список",
+                "Зачем: оценить много пунктов",
+                "одной таблицей",
+            ],
+        ),
+        (
+            "Прочее",
+            [
+                "Свободный текст",
+                "Контакты / файлы",
+                "Ранжирование",
+                "UX: first click, Figma…",
+                "Зачем: детали и спецзадачи",
+            ],
+        ),
+    ]
+    x = M
+    for title, lines in cols:
+        panel(s, x, Inches(1.15), Inches(3.05), Inches(5.5), title, lines, accent=VIOLET)
+        x += Inches(3.2)
+
+    # 6 Single vs multi
+    s = add()
+    header(s, "«Выбор одного» и «выбор нескольких»", "Самые частые типы — разница критична")
+    panel(
+        s,
+        M,
         Inches(1.15),
         Inches(6.1),
-        Inches(5.4),
-        "Незавершенные ответы (PRO+)",
+        Inches(5.5),
+        "Выбор одного (single choice)",
         [
-            "Где: Настройка → Основное",
-            "Зачем: вернуться и дописать длинный опрос",
-            "Вкл: длинные NPS/CSI",
-            "Выкл: короткие CSAT и голосования",
-            "Риск: частичные попадут в выгрузку",
-            "В индекс — только завершенные (NOT_COMPLETED = 0)",
-            "Не пересылать уникальную ссылку с черновиком",
+            "Респондент отмечает РОВНО один вариант.",
+            "",
+            "Пример: «В каком ЖК вы живете?»",
+            "Пример: «Пользовались ли услугой? Да / Нет»",
+            "",
+            "Зачем: взаимоисключающие ответы,",
+            "скринер ЦА, база для логики ветвления.",
+            "",
+            "Важно: от ответа часто зависит,",
+            "какой следующий вопрос показывать.",
         ],
         accent=ORANGE,
     )
-    card(
+    panel(
         s,
         Inches(6.8),
         Inches(1.15),
         Inches(6.0),
-        Inches(5.4),
-        "Рандомизация (случайный порядок)",
+        Inches(5.5),
+        "Выбор нескольких (multi choice)",
         [
-            "Где: страница / вопрос → случайный порядок",
-            "Зачем: снять эффект первого варианта",
-            "Вкл: равноправные списки факторов/опций",
-            "Выкл: шкала NPS 0–10; логические цепочки страниц",
-            "Риск: сложнее тестировать логику",
-            "Быстрые случайные клики ≠ рандомизация:",
-            "их ловим постобработкой (скорость, straight-line)",
+            "Респондент отмечает НЕСКОЛЬКО вариантов.",
+            "",
+            "Пример: «Что улучшить?» — двор, паркинг,",
+            "управляющая компания, приложение…",
+            "",
+            "Зачем: список проблем/причин без нужды",
+            "выбирать «самое главное».",
+            "",
+            "Риск: люди отмечают все подряд.",
+            "Иногда ставят лимит «не больше N».",
+            "Для логики условия сложнее (И / ИЛИ).",
         ],
         accent=VIOLET,
     )
-    finish(s, "Незавершенные / рандом")
 
-    # --- 8 More settings ---
-    s = new_slide(prs)
-    header_bar(s, "Еще настройки качества", "Логика · SMS · таймер · итоги · API")
-    cards = [
-        (
-            "Логика и дисквал",
-            [
-                "Скринер ЦА, ветки «пользовался / нет»",
-                "Дисквалифицированных не в индекс",
-                "Все ветки прогнать на шаге 4",
-            ],
-        ),
-        (
-            "SMS-подтверждение",
-            [
-                "Для голосований с риском накрутки",
-                "NPS/CSI жителей — обычно выкл",
-                "Нужен кабинет SMS Профи",
-            ],
-        ),
-        (
-            "Таймер",
-            [
-                "Для UX-тестов — ок",
-                "Для NPS/CSI/CSAT — ВЫКЛ",
-                "Давление по времени → случайные клики",
-            ],
-        ),
-        (
-            "Показ итогов",
-            [
-                "Во время сбора — ВЫКЛ",
-                "Иначе бандвагон-эффект",
-                "Публиковать после закрытия",
-            ],
-        ),
-        (
-            "Обязательность",
-            [
-                "Ключ метрики и сегмент — обязательны",
-                "Открытые комментарии — по желанию",
-                "Слишком много обязательных → отказы",
-            ],
-        ),
-        (
-            "API / веб-хуки",
-            [
-                "PRO+: 120/мин, 500/сутки",
-                "Учитывать HTTP 429 в синке",
-                "Ключ только в секретах",
-            ],
-        ),
-    ]
-    positions = [
-        (MARGIN, Inches(1.15)),
-        (Inches(4.65), Inches(1.15)),
-        (Inches(8.85), Inches(1.15)),
-        (MARGIN, Inches(4.0)),
-        (Inches(4.65), Inches(4.0)),
-        (Inches(8.85), Inches(4.0)),
-    ]
-    for (left, top), (title, lines) in zip(positions, cards):
-        card(s, left, top, Inches(4.0), Inches(2.6), title, lines)
-    finish(s, "Прочие настройки")
-
-    # --- 9 Matrix ---
-    s = new_slide(prs)
-    header_bar(s, "Матрица: тип × настройка", "Вкл / Выкл / Ситуативно")
-    headers = ["Настройка", "NPS", "CSI", "CSAT", "Голос.", "Послесервис"]
-    data = [
-        ["Повтор с устройства*", "Вкл", "Вкл", "Вкл", "Вкл", "Вкл"],
-        ["Ограничение по IP", "Выкл", "Выкл", "Сит.", "Сит.", "Выкл"],
-        ["Перс. ссылка / ID", "Сит.", "Сит.", "Вкл", "Сит.", "Вкл"],
-        ["SMS-подтверждение", "Выкл", "Выкл", "Выкл", "Сит.", "Выкл"],
-        ["Незавершенные", "Сит.", "Сит.", "Выкл", "Выкл", "Выкл"],
-        ["Рандом шкалы NPS", "Выкл", "—", "—", "—", "—"],
-        ["Рандом списков", "Сит.", "Сит.", "Сит.", "Сит.", "Сит."],
-        ["Таймер опроса", "Выкл", "Выкл", "Выкл", "Выкл", "Выкл"],
-        ["Итоги во время сбора", "Выкл", "Выкл", "Выкл", "Выкл", "Выкл"],
-    ]
-    col_w = [Inches(3.2)] + [Inches(1.8)] * 5
-    x0, y0 = MARGIN, Inches(1.1)
-    row_h = Inches(0.48)
-    x = x0
-    for i, h in enumerate(headers):
-        add_shape(s, x, y0, col_w[i], row_h, fill=VIOLET_DARK)
-        tb = textbox(s, x + Inches(0.06), y0 + Inches(0.1), col_w[i] - Inches(0.08), Inches(0.3))
-        write_paragraph(tb.text_frame, h, size=10, bold=True, color=WHITE, align=PP_ALIGN.CENTER if i else PP_ALIGN.LEFT)
-        x += col_w[i]
-    y = y0 + row_h
-    for ri, row in enumerate(data):
-        x = x0
-        fill = WHITE if ri % 2 == 0 else BG
-        for i, cell in enumerate(row):
-            add_shape(s, x, y, col_w[i], row_h, fill=fill)
-            color = INK
-            if cell == "Вкл":
-                color = GREEN
-            elif cell == "Выкл":
-                color = RED
-            elif cell == "Сит.":
-                color = ORANGE
-            tb = textbox(s, x + Inches(0.06), y + Inches(0.1), col_w[i] - Inches(0.08), Inches(0.3))
-            write_paragraph(
-                tb.text_frame,
-                cell,
-                size=11,
-                bold=(i == 0 or cell in ("Вкл", "Выкл", "Сит.")),
-                color=color,
-                align=PP_ALIGN.CENTER if i else PP_ALIGN.LEFT,
-            )
-            x += col_w[i]
-        y += row_h
-    note = textbox(s, MARGIN, Inches(6.5), Inches(12), Inches(0.4))
-    write_paragraph(
-        note.text_frame,
-        "* Повтор с устройства: Вкл только перед боевым запуском (шаг 8). На тесте (шаги 3–7) — Выкл.",
-        size=11,
-        color=GRAY,
-    )
-    finish(s, "Матрица")
-
-    # --- 10 Postprocess ---
-    s = new_slide(prs)
-    header_bar(s, "Постобработка", "До публикации индексов")
-    blocks = [
-        ("Базовый фильтр", ["Удалить тестовые", "Только завершенные", "Валидный сегмент (ЖК и т.п.)", "Учет времени — MSK"]),
-        ("Скорость и «блуждания»", ["Слишком короткое время", "Straight-line по матрице", "Мусор в открытых", "Флаг low_quality, не в индекс"]),
-        ("Дубли и малые n", ["1 ID / обращение = 1 ответ", "Дедуп между каналами", "n < 30 — пометка «гипотеза»", "Голосования: только подтвержденные"]),
-    ]
-    x = MARGIN
-    for title, lines in blocks:
-        card(s, x, Inches(1.2), Inches(4.0), Inches(5.2), title, lines, accent=ORANGE if title.startswith("Б") else VIOLET)
-        x += Inches(4.2)
-    finish(s, "Постобработка")
-
-    # --- 11 Checklists ---
-    s = new_slide(prs)
-    header_bar(s, "Чеклисты", "Перед проверкой · перед Голубевой Е. А. · перед запуском")
-    cols = [
-        (
-            "Перед внутренней проверкой",
-            [
-                "□ Бриф есть",
-                "□ Опрос создан",
-                "□ Повторы ВЫКЛ",
-                "□ Ветки в предпросмотре",
-                "□ Мобильный вид",
-                "□ NPS-шкала без рандома",
-            ],
-        ),
-        (
-            "Перед согласованием Е. А.",
-            [
-                "□ Внутренняя команда ОК",
-                "□ Заказчик ОК",
-                "□ Черновик коммуникации",
-                "□ Каналы и даты",
-                "□ Опрос + комм. вместе",
-            ],
-        ),
-        (
-            "Перед запуском",
-            [
-                "□ Согласование Голубевой Е. А.",
-                "□ Тесты удалены",
-                "□ Повторы ВКЛ",
-                "□ Итоги респондентам ВЫКЛ",
-                "□ Боевая ссылка в коммуникации",
-                "□ API-бюджет 500/сутки учтен",
-            ],
-        ),
-    ]
-    x = MARGIN
-    for title, lines in cols:
-        card(s, x, Inches(1.15), Inches(4.0), Inches(5.5), title, lines, accent=ORANGE)
-        x += Inches(4.2)
-    finish(s, "Чеклисты")
-
-    # --- 12 Errors ---
-    s = new_slide(prs)
-    header_bar(s, "Типичные ошибки", "Что ломает репрезентативность")
-    errs = [
-        ("Забыли выкл повторы на тесте", "Команда не может перепройти → шаг 3"),
-        ("Забыли вкл повторы перед запуском", "Дубли и накрутки → шаг 8"),
-        ("Не зачистили тестовые", "Искажение NPS/CSI → зачистка на шаге 8"),
-        ("IP-лимит для жителей ЖК", "Много честных отсечено → устройство / перс. ссылка"),
-        ("Рандом шкалы NPS", "Невалидная метрика → шкалу 0–10 не рандомизировать"),
-        ("Таймер на длинном NPS", "Случайные клики → таймер выкл"),
-        ("Незавершенные в индексе", "Шум в метрике → только завершенные"),
-        ("Лидерборд во время сбора", "Бандвагон → итоги после закрытия"),
-        ("Запуск без Голубевой Е. А.", "Нарушение процесса → шаг 7 обязателен"),
-    ]
-    y = Inches(1.1)
-    for title, fix in errs:
-        add_shape(s, MARGIN, y, Inches(12.4), Inches(0.55), fill=WHITE)
-        add_shape(s, MARGIN, y, Inches(0.08), Inches(0.55), fill=RED)
-        tb = textbox(s, MARGIN + Inches(0.2), y + Inches(0.08), Inches(12), Inches(0.45))
-        tf = tb.text_frame
-        tf.word_wrap = True
-        write_paragraph(tf, f"{title}  →  {fix}", size=12, color=INK, space_after=Pt(0))
-        y += Inches(0.58)
-    finish(s, "Ошибки")
-
-    # --- 13 Wandering cheat ---
-    s = new_slide(prs)
-    header_bar(s, "Шпаргалка: «блуждающие» ответы", "Три разных явления — три разных действия")
-    card(
+    # 7 Scales
+    s = add()
+    header(s, "Шкалы: NPS, CSI, звезды", "Числовая оценка — основа наших метрик")
+    body_box(
         s,
-        MARGIN,
-        Inches(1.2),
-        Inches(4.0),
-        Inches(5.2),
-        "1. Случайный порядок в UI",
+        M,
+        Inches(1.15),
+        Inches(12.4),
+        Inches(5.8),
         [
-            "Это рандомизация в Testograf",
-            "Вкл: равноправные списки",
-            "Выкл: шкала NPS, логика страниц",
-            "См. Настройка вопроса / страницы",
+            ("NPS — вопрос «порекомендуете ли…» по шкале 0–10. Ответы делят на критиков (0–6), нейтралов (7–8), промоутеров (9–10). Индекс = % промоутеров − % критиков.", {"size": 14, "color": INK, "after": 12}),
+            ("CSI / Лайкерт — оценка согласия или удовлетворенности по пунктам (например 1–5: «совсем не согласен» → «полностью согласен»).", {"size": 14, "color": INK, "after": 12}),
+            ("Звезды / смайлы — та же идея «оценка», но визуально проще для коротких CSAT.", {"size": 14, "color": INK, "after": 12}),
+            ("Правило: шкалу NPS 0–10 НЕ перемешиваем случайным порядком. Цифры всегда идут по порядку, иначе метрика ломается.", {"size": 14, "bold": True, "color": ORANGE, "after": 8}),
+        ],
+    )
+
+    # 8 Matrices
+    s = add()
+    header(s, "Что такое матрица", "Таблица: строки = объекты, столбцы = оценки")
+    body_box(
+        s,
+        M,
+        Inches(1.1),
+        Inches(12.4),
+        Inches(2.2),
+        [
+            ("Матрица нужна, когда много однотипных оценок. Вместо десяти отдельных вопросов — одна таблица.", {"size": 14, "color": INK, "after": 10}),
+            ("Пример CSI: строки — «чистота», «охрана», «приложение»; столбцы — оценки от 1 до 5.", {"size": 14, "color": GRAY, "after": 8}),
+        ],
+    )
+    mats = [
+        ("Матрица: один ответ", "В каждой строке выбирается один столбец. Классика для CSI/Лайкерт."),
+        ("Матрица: несколько", "В строке можно отметить несколько столбцов. Реже; осторожно с перегрузом."),
+        ("Матрица: звезды", "Оценка звездами по каждой строке. Удобно визуально."),
+        ("Матрица: текст / список", "Свободный текст или выпадающий список в ячейках."),
+    ]
+    y = Inches(3.3)
+    for title, text in mats:
+        round_rect(s, M, y, Inches(12.4), Inches(0.75), WHITE)
+        b = tb(s, M + Inches(0.2), y + Inches(0.12), Inches(12), Inches(0.55))
+        tf = b.text_frame
+        tf.word_wrap = True
+        P(tf, f"{title} — {text}", size=13, color=INK, after=0)
+        y += Inches(0.85)
+    note = tb(s, M, Inches(6.55), Inches(12.4), Inches(0.4))
+    P(note.text_frame, "Риск матриц: «straight-line» — человек ставит одну колонку во все строки не читая. Ловим это на постобработке.", size=12, color=ORANGE, after=0)
+
+    # 9 Logic basic
+    s = add()
+    header(s, "Что такое логика", "Обычная логика переходов (вкладка «Логика»)")
+    body_box(
+        s,
+        M,
+        Inches(1.15),
+        Inches(12.4),
+        Inches(5.8),
+        [
+            ("Логика — правило: «если человек ответил так, покажи ему вот это (или заверши опрос)».", {"size": 15, "bold": True, "color": INK, "after": 12}),
+            ("Без логики все идут по одним и тем же вопросам подряд. С логикой маршрут персональный.", {"size": 14, "color": GRAY, "after": 12}),
+            ("Простой пример:", {"size": 14, "bold": True, "color": INK, "after": 8}),
+            ("Вопрос: «Живете ли вы в нашем ЖК?» → Да / Нет", {"size": 14, "color": GRAY, "after": 6}),
+            ("Если «Нет» → дисквалификация (вежливый экран «опрос не для вас»). NPS не спрашиваем.", {"size": 14, "color": GRAY, "after": 6}),
+            ("Если «Да» → дальше вопросы про двор, УК, NPS.", {"size": 14, "color": GRAY, "after": 12}),
+            ("Обычная логика обычно смотрит на ОДИН предыдущий вопрос (выбрал / не выбрал вариант).", {"size": 14, "color": INK, "after": 8}),
+            ("Куда можно отправить: на вопрос, на страницу, на стандартное/индивидуальное завершение, на дисквалификацию.", {"size": 14, "color": GRAY, "after": 8}),
+        ],
+    )
+
+    # 10 Advanced logic
+    s = add()
+    header(s, "Что такое продвинутая логика", "Только PRO+ · вкладка «Продвинутая логика»")
+    body_box(
+        s,
+        M,
+        Inches(1.1),
+        Inches(12.4),
+        Inches(5.9),
+        [
+            ("Продвинутая логика нужна, когда одного условия мало. Она умеет комбинировать ответы на РАЗНЫЕ вопросы и параметры ссылки через И / ИЛИ.", {"size": 14, "bold": True, "color": INK, "after": 12}),
+            ("Пример 1: показать блок «паркинг», только если человек живет в ЖК И отметил, что у него есть машина.", {"size": 14, "color": GRAY, "after": 10}),
+            ("Пример 2: если в параметре ссылки region=msk ИЛИ человек выбрал Москву в анкете — показать московские формулировки.", {"size": 14, "color": GRAY, "after": 10}),
+            ("Пример 3: в матрице — условие по конкретной ячейке («в строке 2 выбран столбец 3»).", {"size": 14, "color": GRAY, "after": 12}),
+            ("Чем отличается от обычной:", {"size": 14, "bold": True, "color": INK, "after": 8}),
+            ("• обычная — проще, чаще от одного вопроса;", {"size": 14, "color": GRAY, "after": 6}),
+            ("• продвинутая — несколько условий сразу, параметры ссылки, гибкий показ/пропуск блоков.", {"size": 14, "color": GRAY, "after": 10}),
+            ("Обязательно: перед запуском прогнать ВСЕ ветки в предпросмотре. Ошибка в логике = все ушли не туда.", {"size": 14, "bold": True, "color": ORANGE, "after": 6}),
+        ],
+    )
+
+    # 11 Wandering answers - THE KEY SLIDE
+    s = add()
+    header(s, "Что такое «блуждающие» ответы", "Это не одна кнопка в Testograf. Обычно имеют в виду одно из трех")
+    panel(
+        s,
+        M,
+        Inches(1.15),
+        Inches(4.0),
+        Inches(5.5),
+        "Смысл A. Случайный порядок",
+        [
+            "В сервисе это называется",
+            "рандомизация / случайный порядок",
+            "вопросов или вариантов ответа.",
+            "",
+            "Зачем: чтобы первый пункт списка",
+            "не получал лишних голосов.",
+            "",
+            "Вкл: списки равноправных опций.",
+            "Выкл: шкала NPS 0–10 и логичные",
+            "последовательности страниц.",
         ],
         accent=VIOLET,
     )
-    card(
+    panel(
         s,
         Inches(4.65),
-        Inches(1.2),
+        Inches(1.15),
         Inches(4.0),
-        Inches(5.2),
-        "2. Быстрые случайные клики",
+        Inches(5.5),
+        "Смысл B. Случайные клики",
         [
-            "Не настройка сервиса",
-            "Профилактика: без таймера, нормальная длина",
-            "Лечение: постобработка по времени",
-            "и straight-line",
+            "Респондент «тыкает наугад»,",
+            "чтобы быстрее закончить.",
+            "",
+            "Признаки: очень короткое время,",
+            "одна колонка во всей матрице,",
+            "противоречия в ответах.",
+            "",
+            "В UI это НЕ включается.",
+            "Профилактика: без таймера,",
+            "не раздувать анкету.",
+            "Лечение: чистка после сбора.",
         ],
         accent=ORANGE,
     )
-    card(
+    panel(
         s,
         Inches(8.85),
-        Inches(1.2),
+        Inches(1.15),
         Inches(4.0),
-        Inches(5.2),
-        "3. Бросили анкету на полпути",
+        Inches(5.5),
+        "Смысл C. Бросили на полпути",
         [
-            "Незавершенные (PRO+) + напоминания",
-            "Короче анкета",
-            "В индекс — только завершенные",
-            "Drop-off смотреть отдельно",
+            "Человек начал и ушел.",
+            "В Testograf это незавершенные",
+            "ответы (PRO+).",
+            "",
+            "Можно сохранить черновик",
+            "и дать вернуться.",
+            "",
+            "В индекс NPS/CSI берем",
+            "только завершенные анкеты.",
+            "Незавершенные — для анализа,",
+            "где люди отваливаются.",
         ],
         accent=GREEN,
     )
-    finish(s, "Блуждающие")
 
-    # --- 14 Close ---
-    s = new_slide(prs)
-    add_shape(s, 0, 0, SLIDE_W, SLIDE_H, fill=BG)
-    add_shape(s, 0, 0, SLIDE_W, Inches(0.12), fill=ORANGE)
-    box = textbox(s, MARGIN, Inches(2.2), Inches(12), Inches(3.5))
-    tf = box.text_frame
-    tf.word_wrap = True
-    write_paragraph(tf, "Итог", size=16, bold=True, color=ORANGE)
-    write_paragraph(tf, "Сначала процесс, потом настройки", size=28, bold=True, color=INK, space_after=Pt(12))
-    write_paragraph(
-        tf,
-        "Тест без ограничения повторов → согласование Голубевой Е. А. →\n"
-        "зачистка тестов → включение защиты → запуск → чистая аналитика.",
-        size=16,
-        color=GRAY,
-        space_after=Pt(18),
+    # 12 Randomization detail
+    s = add()
+    header(s, "Рандомизация подробно", "Смысл A «блуждающих» — как настроить правильно")
+    body_box(
+        s,
+        M,
+        Inches(1.15),
+        Inches(12.4),
+        Inches(5.8),
+        [
+            ("Где включается: в настройках страницы — случайный порядок вопросов; в настройках вопроса — случайный порядок вариантов ответа.", {"size": 14, "color": INK, "after": 12}),
+            ("Когда ВКЛЮЧАТЬ: список факторов «что улучшить», варианты дизайна, бренды/опции без «правильного» порядка.", {"size": 14, "color": GRAY, "after": 10}),
+            ("Когда ВЫКЛЮЧАТЬ: NPS 0–10; шкалы «от плохо к хорошо»; страницы, которые должны идти смысловым сюжетом (профиль → оценка → причины).", {"size": 14, "color": GRAY, "after": 10}),
+            ("Связь с логикой: если ветвление завязано на конкретный вариант, рандомизация вариантов обычно не мешает (условие по ID ответа, не по месту на экране). Но тестировать все равно нужно.", {"size": 14, "color": GRAY, "after": 10}),
+            ("Итог: «блуждающий порядок» — инструмент против смещения. «Блуждающие клики» — проблема качества данных. Не путайте.", {"size": 14, "bold": True, "color": ORANGE, "after": 6}),
+        ],
     )
-    write_paragraph(tf, "Полный текст: docs/testograf-playbook-client-surveys.md", size=13, color=VIOLET_DARK)
-    finish(s, "Итог")
 
-    # footers (skip title and final if desired — add to all content slides)
-    total = len(prs.slides)
-    for i, slide in enumerate(prs.slides, start=1):
-        if i == 1 or i == total:
+    # 13 Repeats
+    s = add()
+    header(s, "Ограничение повторного прохождения", "Чтобы один человек не накрутил результаты")
+    body_box(
+        s,
+        M,
+        Inches(1.15),
+        Inches(12.4),
+        Inches(5.8),
+        [
+            ("Зачем: в аналитике должен быть принцип «один респондент — один учтенный ответ» (если бриф не говорит иное).", {"size": 14, "color": INK, "after": 10}),
+            ("Устройство / cookies — базовая защита. Где: Настройка → Основное → блок «Вход». Легко обойти инкогнито или другим телефоном.", {"size": 14, "color": GRAY, "after": 8}),
+            ("IP — строже, но опасно для ЖК: у многих жителей один Wi‑Fi / один NAT. Для наших опросов жителей обычно НЕ включаем.", {"size": 14, "color": GRAY, "after": 8}),
+            ("Персональная ссылка / параметр ID — самый надежный способ, когда знаем участника (CSAT после заявки, рассылка).", {"size": 14, "color": GRAY, "after": 8}),
+            ("SMS-подтверждение (PRO+) — для голосований с риском накрутки: один номер = один голос.", {"size": 14, "color": GRAY, "after": 12}),
+            ("Наш процесс: на тесте ограничение ВЫКЛЮЧЕНО (шаг 3). Перед запуском ВКЛЮЧЕНО (шаг 8), после зачистки тестовых ответов.", {"size": 14, "bold": True, "color": ORANGE, "after": 6}),
+        ],
+    )
+
+    # 14 Incomplete
+    s = add()
+    header(s, "Незавершенные ответы", "Смысл C «блуждающих» · функция PRO+")
+    body_box(
+        s,
+        M,
+        Inches(1.15),
+        Inches(12.4),
+        Inches(5.8),
+        [
+            ("Если включить сохранение незавершенных: человек может закрыть анкету и позже продолжить с того же места (по именной ссылке / паролю / токену в браузере).", {"size": 14, "color": INK, "after": 12}),
+            ("В личном кабинете такие ответы видны с пометкой «Незавершен» — видно, на каком вопросе остановились.", {"size": 14, "color": GRAY, "after": 12}),
+            ("Когда включать: длинные NPS/CSI.", {"size": 14, "color": GRAY, "after": 8}),
+            ("Когда выключать: короткие CSAT и голосования «в один экран».", {"size": 14, "color": GRAY, "after": 12}),
+            ("Жесткое правило аналитики: в расчет индекса идут только завершенные. Иначе сравниваем «яблоки с недоеденными яблоками».", {"size": 14, "bold": True, "color": ORANGE, "after": 8}),
+        ],
+    )
+
+    # 15 Process
+    s = add()
+    header(s, "Как мы запускаем опрос", "Обязательные 9 шагов")
+    steps = [
+        "1. Бриф от заказчика (или готовим сами, если заказчик — мы).",
+        "2. Заводим опрос в Testograf (создание → логика → настройка → дизайн).",
+        "3. Отключаем ограничение повторного прохождения — иначе нельзя нормально тестировать.",
+        "4. Внутренняя команда проверяет логику, тексты, ошибки, мобильный вид.",
+        "5. После внутренней проверки — отдаем заказчику.",
+        "6. Параллельно готовим коммуникацию (push / ТГ / email / ЛК).",
+        "7. Опрос И текст коммуникации согласовывает Голубева Екатерина Анатольевна.",
+        "8. Зачищаем тестовые ответы и ВКЛЮЧАЕМ ограничение «нельзя пройти дважды».",
+        "9. Запуск: период проведения, каналы, фиксация даты старта.",
+    ]
+    b = tb(s, M, Inches(1.1), Inches(12.4), Inches(5.8))
+    tf = b.text_frame
+    tf.word_wrap = True
+    for line in steps:
+        P(tf, line, size=13, color=INK, after=7)
+
+    # 16 Why step 3 and 8
+    s = add()
+    header(s, "Почему так с ограничением повторов", "Самая частая путаница в процессе")
+    panel(
+        s,
+        M,
+        Inches(1.2),
+        Inches(6.1),
+        Inches(5.3),
+        "На тесте (шаги 3–7) — ВЫКЛ",
+        [
+            "Команда и заказчик должны пройти",
+            "опрос много раз: разные ветки логики,",
+            "мобильный Safari, правки текстов.",
+            "",
+            "Если ограничение включено слишком рано,",
+            "проверка ломается: «мне пишет,",
+            "что я уже проходил».",
+        ],
+        accent=ORANGE,
+    )
+    panel(
+        s,
+        Inches(6.8),
+        Inches(1.2),
+        Inches(6.0),
+        Inches(5.3),
+        "Перед запуском (шаг 8) — ВКЛ",
+        [
+            "Сначала удаляем все тестовые ответы.",
+            "Потом включаем защиту от повторов.",
+            "Только после этого — боевая ссылка",
+            "в коммуникации.",
+            "",
+            "Если нашли баг после старта:",
+            "выкл → фикс → зачистка тестов →",
+            "снова вкл → продолжаем сбор.",
+        ],
+        accent=GREEN,
+    )
+
+    # 17 Post processing
+    s = add()
+    header(s, "После сбора: что выкидываем из аналитики", "Даже при идеальных настройках нужна чистка")
+    body_box(
+        s,
+        M,
+        Inches(1.15),
+        Inches(12.4),
+        Inches(5.8),
+        [
+            ("1. Тестовые прогоны команды и заказчика — удалить до запуска; если остались, выкинуть из базы.", {"size": 14, "color": INK, "after": 10}),
+            ("2. Незавершенные — не считать в NPS/CSI/CSAT.", {"size": 14, "color": INK, "after": 10}),
+            ("3. Слишком быстрые / «тыканье» / straight-line по матрице — помечать как низкое качество и не включать в индекс.", {"size": 14, "color": INK, "after": 10}),
+            ("4. Дубли одного человека / одного обращения — оставить один ответ по правилу брифа.", {"size": 14, "color": INK, "after": 10}),
+            ("5. Сегменты с n < 30 — показывать только как гипотезу, без жестких выводов.", {"size": 14, "color": INK, "after": 10}),
+            ("6. Часовой пояс учета событий — Москва (UTC+3).", {"size": 14, "color": INK, "after": 8}),
+        ],
+    )
+
+    # 18 Checklist
+    s = add()
+    header(s, "Чеклист перед запуском", "Если чего-то нет — не стартуем")
+    items = [
+        "□ Бриф понятен: цель, ЦА, каналы, нужен ли 1 ответ на человека",
+        "□ Типы вопросов выбраны осознанно (один / несколько / шкала / матрица)",
+        "□ Логика (и продвинутая, если есть) прогнана по всем веткам",
+        "□ NPS-шкала без рандомизации вариантов",
+        "□ Согласование Голубевой Е. А. по опросу и коммуникации получено",
+        "□ Тестовые ответы удалены",
+        "□ Ограничение повторного прохождения включено",
+        "□ Показ промежуточных итогов респондентам выключен",
+        "□ В аналитике заранее договорено: только завершенные",
+    ]
+    b = tb(s, M, Inches(1.15), Inches(12.4), Inches(5.8))
+    tf = b.text_frame
+    tf.word_wrap = True
+    for line in items:
+        P(tf, line, size=15, color=INK, after=10)
+
+    # 19 Mistakes
+    s = add()
+    header(s, "Типичные ошибки простым языком", "Что идет не так и почему это плохо")
+    errs = [
+        ("Путают логику и рандомизацию", "Логика решает КУДА идти. Рандомизация решает В КАКОМ ПОРЯДКЕ показать варианты."),
+        ("Рандомят шкалу NPS", "Цифры 0–10 должны стоять по порядку. Иначе индекс нельзя интерпретировать."),
+        ("Считают незавершенные в NPS", "Сравнивают полные и оборванные анкеты — метрика плывет."),
+        ("Включают IP-лимит для ЖК", "Соседи на одном Wi‑Fi: ответит только первый."),
+        ("Запускают без шага 7", "Нет согласования Голубевой Е. А. — запуск запрещен процессом."),
+        ("Оставляют тестовые ответы", "Свои «проверки» портят индекс наравне с живыми ответами."),
+    ]
+    y = Inches(1.1)
+    for title, text in errs:
+        round_rect(s, M, y, Inches(12.4), Inches(0.85), WHITE)
+        rect(s, M, y, Inches(0.09), Inches(0.85), RED)
+        b = tb(s, M + Inches(0.25), y + Inches(0.12), Inches(11.9), Inches(0.65))
+        tf = b.text_frame
+        tf.word_wrap = True
+        P(tf, title, size=13, bold=True, color=INK, after=2)
+        P(tf, text, size=12, color=GRAY, after=0)
+        y += Inches(0.92)
+
+    # 20 Close
+    s = add()
+    rect(s, 0, 0, SLIDE_W, SLIDE_H, BG)
+    rect(s, 0, 0, SLIDE_W, Inches(0.1), ORANGE)
+    b = tb(s, M, Inches(2.0), Inches(12), Inches(4))
+    tf = b.text_frame
+    tf.word_wrap = True
+    P(tf, "Короткий итог", size=14, bold=True, color=ORANGE, after=10)
+    P(tf, "Сначала понимаем инструмент,\nпотом нажимаем настройки", size=28, bold=True, color=INK, after=14)
+    P(
+        tf,
+        "Тип вопроса задает, ЧТО можно ответить.\n"
+        "Логика задает, КОМУ ЧТО показать.\n"
+        "«Блуждающие» — это либо рандом порядка, либо плохие клики, либо незавершенные.\n"
+        "Запуск у нас — только через 9 шагов и согласование Голубевой Е. А.",
+        size=15,
+        color=GRAY,
+        after=16,
+    )
+    P(tf, "Полный текст: docs/testograf-playbook-client-surveys.md", size=13, color=VIOLET_DARK)
+
+    total = len(slides)
+    for i, slide in enumerate(slides, start=1):
+        if i in (1, total):
             continue
         footer(slide, i, total)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(OUT))
-    print(f"Saved: {OUT}")
+    print(f"Saved {OUT} ({total} slides)")
     return OUT
 
 
