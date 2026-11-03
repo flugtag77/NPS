@@ -3,8 +3,8 @@
 Операционная инструкция для тех, кто собирает опросы в [Testograf](https://www.testograf.ru/).  
 Типы опросов: **NPS, CSI, CSAT, голосования, послесервисные**.
 
-Презентация: [`docs/Testograf_playbook_client_surveys.pptx`](Testograf_playbook_client_surveys.pptx)  
-(пересборка: `python3 nps_pipeline/build_testograf_playbook_pptx.py` → файл также в `nps_pipeline/build/`, каталог в gitignore).
+Презентация собирается локально и не хранится в git:  
+`python3 nps_pipeline/build_testograf_playbook_pptx.py` → `nps_pipeline/build/Testograf_playbook_client_surveys.pptx`.
 
 Документ отвечает на вопросы: *зачем настройка*, *где включить*, *когда включать / выключать*, *какие риски*, *как чистить данные после сбора*.
 
